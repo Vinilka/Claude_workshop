@@ -1,0 +1,63 @@
+name: Daily Todoist API Tests
+
+on:
+  schedule:
+    # 06:00 UTC daily — 08:00 in Europe/Prague, the account's timezone.
+    # Both zones sit on the same calendar day at this hour.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# A push landing during the 06:00 cron would otherwise run two workflows at
+# once — 2 workers each = 4 projects, still under the cap alone, but stacked
+# with any other concurrent run it risks tipping over the free plan's limit.
+# No cancel-in-progress: cancelling a run mid-flight would skip its teardown
+# and strand its project on the account, so a second run queues instead.
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  api-tests:
+    name: Run API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify the API token secret is configured
+        env:
+          TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
+        run: |
+          if [ -z "$TODOIST_API_TOKEN" ]; then
+            echo "::error::TODOIST_API_TOKEN secret is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "Token secret is present."
+
+      # No browser binaries are installed: this suite makes API calls only,
+      # so no browser is ever launched and none needs downloading.
+      - name: Run the API tests
+        env:
+          TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
+          TODOIST_TEST_RUN_ID: gh${{ github.run_id }}
+        run: npm test
+
+      - name: Upload the HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 14

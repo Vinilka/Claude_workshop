@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+playwright-report/
+test-results/
+blob-report/
+.DS_Store
+*.log
+.superpowers/
+
+# Stray embedded git repo (bare .git dir, no work tree) — not ours to remove,
+# but must never be staged as a gitlink.
+Claude_workshop/

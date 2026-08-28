@@ -1,0 +1,20 @@
+{
+  "name": "todoist-api-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright API test suite for the Todoist API",
+  "scripts": {
+    "test": "playwright test",
+    "test:lifecycle": "playwright test tests/task-lifecycle.spec.ts",
+    "test:scheduling": "playwright test tests/task-scheduling.spec.ts",
+    "test:validation": "playwright test tests/task-validation.spec.ts",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^22.10.0",
+    "dotenv": "^16.4.7",
+    "typescript": "^5.7.2"
+  }
+}
