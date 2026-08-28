@@ -1,6 +1,7 @@
 import { test, expect, TEST_PROJECT_PREFIX, runId } from '../../src/fixtures/test-fixtures';
 
-test.describe('test fixtures', () => {
+// @live: the fixtures under test create a real project and real tasks.
+test.describe('test fixtures @live', () => {
   // Serial mode: the last two tests hand a task id between them, which needs
   // them to run in order in the same worker. `fullyParallel` would otherwise
   // let Playwright spread tests in this file across workers.

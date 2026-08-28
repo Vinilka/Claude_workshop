@@ -14,8 +14,10 @@ on:
 # with any other concurrent run it risks tipping over the free plan's limit.
 # No cancel-in-progress: cancelling a run mid-flight would skip its teardown
 # and strand its project on the account, so a second run queues instead.
+# Shared with the PR Checks workflow, so a pull request's live run and this one
+# queue instead of overlapping.
 concurrency:
-  group: ${{ github.workflow }}
+  group: todoist-live-api
 
 jobs:
   api-tests:

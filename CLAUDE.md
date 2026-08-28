@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **English only** — all code, comments, commit messages, docs, and communication.
 - **Branch per feature.** Create the branch before writing code; never work directly on `main`.
-- **Do not commit, merge, or push.** The user does that. When a feature is finished, fetch and report how the branch stands against `origin/main`, then hand it back.
+- **Never merge into `main` and never push.** Not to any remote, not even when asked to "finish" or "wrap up" — integration is the user's call alone. Do not commit either; the user does that.
+- When a feature is finished, fetch and report how the branch stands against `origin/main` (ahead/behind, any conflicts), then hand it back.
+- **A pull request per feature.** Every feature branch ends with a PR — but the PR is *prepared*, not opened: write out the title and the bullet description in the handover so the user can paste them straight into GitHub. The user commits, pushes and opens the PR.
 - **Worktrees are the exception, not the default.** Work in the main worktree unless more than one agent is running in parallel; when a worktree is used, bring the work back into the main worktree.
 - **PR format** — a clear, specific title and a description written as bullet points (what changed and why). No mention of Claude, Claude Code, or any AI attribution, and no generated-by footer.
 
@@ -22,7 +24,8 @@ npm run test:lifecycle         # one spec file
 npm run typecheck              # tsc --noEmit (there is no linter)
 npm run report                 # open the HTML report from the last run
 
-npx playwright test tests/unit                    # unit tests only — no network, no token needed
+npx playwright test tests/unit --grep-invert @live  # offline specs only — no network, no token needed
+npx playwright test tests/unit                    # all of tests/unit — the @live specs need a token
 npx playwright test tests/unit/dates.spec.ts      # a single file
 npx playwright test -g "moves a task to tomorrow" # a single test by title
 ```
@@ -36,7 +39,7 @@ Setup: `npm install`, then `cp .env.example .env` and paste a Todoist API token 
 - [src/fixtures/test-fixtures.ts](src/fixtures/test-fixtures.ts) — the `test` object specs import instead of `@playwright/test`. Worker-scoped: `client`, `testProject`, `accountTimeZone`. Test-scoped: `trackTask`, `uniqueContent`.
 - [src/global-teardown.ts](src/global-teardown.ts) + [src/utils/sweep.ts](src/utils/sweep.ts) — sweeps projects stranded by a killed worker. `shouldSweepProject` is pure and unit-tested.
 - [reporting/summary-reporter.ts](reporting/summary-reporter.ts) — custom reporter writing `test-results/summary.md`, also appended to `$GITHUB_STEP_SUMMARY` in CI.
-- [tests/unit/](tests/unit/) — pure logic tests using bare `@playwright/test`, no fixtures and no network. They live under the same `testDir`, so `npm test` runs them alongside the live specs.
+- [tests/unit/](tests/unit/) — mostly pure logic tests using bare `@playwright/test`, no fixtures and no network. Two exceptions, `client-smoke.spec.ts` and `fixtures.spec.ts`, exercise the client and the fixtures against the real account and are tagged **`@live`** in their describe titles; `--grep-invert @live` is what CI uses to get a genuinely offline, token-free run. They live under the same `testDir`, so `npm test` runs them alongside the live specs.
 
 ## Isolation model (do not break these)
 
@@ -46,7 +49,7 @@ The account is shared and real, so:
 - **One project per worker**, not per test — the free plan caps active projects at 5. `workers` is pinned in [playwright.config.ts](playwright.config.ts) (3 local, 2 CI) for the same reason; do not remove the cap or let it default to core count.
 - **Cleanup belongs in fixture teardown** (`trackTask`, `testProject`), not at the end of a test body — a failed assertion aborts the body but teardown still runs.
 - `runId` is stamped into `process.env` in `playwright.config.ts` *before* workers fork, using `??=` so re-evaluation in a worker does not overwrite the inherited value. Project names are `${TEST_PROJECT_PREFIX}-${runId}-w${workerIndex}`, and the sweep matches the exact `-${runId}-` segment because CI run ids are variable-length prefixes of each other.
-- CI uses `concurrency` without `cancel-in-progress`: cancelling mid-run would skip teardown and strand a project.
+- CI uses `concurrency` without `cancel-in-progress`: cancelling mid-run would skip teardown and strand a project. Both workflows' account-touching jobs share the group `todoist-live-api`, so a pull request's live run and the daily run queue instead of overlapping (2 workers each would be 4 of the 5 allowed projects). The offline job in [.github/workflows/pr-checks.yml](.github/workflows/pr-checks.yml) sits in its own per-ref group and *is* cancellable — it touches no account.
 
 ## Todoist API facts that contradict common examples
 
