@@ -2,7 +2,8 @@ import { test, expect, request } from '@playwright/test';
 import { TodoistClient } from '../../src/api/todoist-client';
 import { loadConfig } from '../../src/config';
 
-test.describe('TodoistClient connectivity', () => {
+// @live: these two hit the real account, unlike the rest of tests/unit.
+test.describe('TodoistClient connectivity @live', () => {
   test('authenticates and unwraps the project list envelope', async () => {
     const config = loadConfig();
     const context = await request.newContext({

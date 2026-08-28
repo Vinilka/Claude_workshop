@@ -1,0 +1,109 @@
+name: PR Checks
+
+on:
+  pull_request:
+  push:
+    # `main` is already covered by the Daily Todoist API Tests workflow; running
+    # here as well would double up on the live account for no extra signal.
+    branches-ignore: [main]
+  workflow_dispatch:
+
+jobs:
+  static-checks:
+    name: Typecheck and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # Nothing here touches the Todoist account, so superseded runs are safe to
+    # cancel: a cancelled job strands no project.
+    concurrency:
+      group: pr-static-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Pure logic only. `tests/unit` also holds two specs that talk to the real
+      # account (tagged `@live`); those belong to the live-api job below, so
+      # this step excludes them and needs no token — which is what lets it run
+      # on fork pull requests.
+      - name: Run the offline unit tests
+        run: npx playwright test tests/unit --grep-invert @live
+
+  live-api:
+    name: Run API tests
+    needs: static-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Forks cannot read repository secrets, so the live suite would fail for
+    # reasons unrelated to the change under review. `static-checks` still gates
+    # every fork PR.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+
+    # Shared with the Daily Todoist API Tests workflow so the two never run at
+    # once: 2 workers each = 4 projects against a free plan capped at 5 active.
+    # No cancel-in-progress — cancelling a run mid-flight skips its teardown and
+    # strands its project on the account, so a second run queues instead.
+    concurrency:
+      group: todoist-live-api
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A missing secret is a repository configuration gap, not a fault in the
+      # pull request, so report it and skip rather than fail the check.
+      - name: Check whether the API token secret is configured
+        id: token
+        env:
+          TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
+        run: |
+          if [ -z "$TODOIST_API_TOKEN" ]; then
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::TODOIST_API_TOKEN secret is not set — skipping the live API tests. Add it under Settings → Secrets and variables → Actions."
+            echo "### Live API tests skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The \`TODOIST_API_TOKEN\` secret is not configured for this repository." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # No browser binaries are installed: this suite makes API calls only, so
+      # no browser is ever launched and none needs downloading.
+      - name: Run the API tests
+        if: steps.token.outputs.has_token == 'true'
+        env:
+          TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
+          TODOIST_TEST_RUN_ID: gh${{ github.run_id }}
+        run: npm test
+
+      - name: Upload the HTML report
+        if: always() && steps.token.outputs.has_token == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-pr-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 14
